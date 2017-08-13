@@ -166,7 +166,7 @@ def check_directory_tags_filenames(dir_path):
 
     if sorted(flac_tracks, key=lambda x: x[0]) != sorted(flac_tracks, key=lambda x: x[1]):
         print flac_tracks
-        raise Exception('Filenames and track numbers do not sort the same way')
+        print 'Filenames and track numbers do not sort the same way'
 
 
 def safe_retrieve_new_torrent(what_client, info_hash):

@@ -355,7 +355,7 @@ class TranscodeJob(object):
                 shutil.rmtree(temp_dir)
             except OSError:
                 pass
-
+    
     def transcode_upload_lossless(self, temp_dir):
         print 'Will transcode {0}'.format(self.what_id)
 
@@ -380,23 +380,31 @@ class TranscodeJob(object):
             del mp3_ids['320']
         
         num_cores = multiprocessing.cpu_count()
-        Parallel(n_jobs=num_cores)(transcode_loop(self, mp3_ids, bitrate) for bitrate in TRANSCODER_FORMATS)
+	print 'found {0} cores'.format(num_cores)
+	
+	pool = multiprocessing.Pool(num_cores)
+	for bitrate in TRANSCODER_FORMATS:
+	    pool.apply_async(transcode_loop, [self, mp3_ids, bitrate, temp_dir])
+	pool.close()
+	pool.join()
+        #Parallel(n_jobs=num_cores)(delayed(transcode_loop)(self, mp3_ids, bitrate, temp_dir) for bitrate in TRANSCODER_FORMATS)
 
-    def transcode_loop(self, mp3_ids, bitrate):
-	if bitrate not in mp3_ids:
-            dest_format = "MP3"
-            if bitrate == '16BITFLAC':
-                if 'Lossless' in mp3_ids:
-                    print '16bit FLAC already exists, skipping'
-                    return
-                else:
-                    dest_format = 'FLAC'
-            single_job = TranscodeSingleJob(self.what, self.what_torrent, self.report_progress,
-                                            self.source_dir,
-                                            bitrate, dest_format, transcoder_temp_dir=temp_dir)
-            single_job.force_warnings = self.force_warnings
-            single_job.run()
-            print 'Uploaded {0}'.format(bitrate.upper())
+def transcode_loop(self, mp3_ids, bitrate, temp_dir):
+    if bitrate not in mp3_ids:
+        dest_format = "MP3"
+        if bitrate == '16BITFLAC':
+            if 'Lossless' in mp3_ids:
+                print '16bit FLAC already exists, skipping'
+                return
+            else:
+                dest_format = 'FLAC'
+        single_job = TranscodeSingleJob(self.what, self.what_torrent, self.report_progress,
+                                        self.source_dir,
+                                        bitrate, dest_format, transcoder_temp_dir=temp_dir)
+        single_job.force_warnings = self.force_warnings
+        single_job.run()
+        print 'Uploaded {0}'.format(bitrate.upper())
+
 
 @task(bind=True, track_started=True)
 def transcode(self, what_id):
