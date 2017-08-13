@@ -7,6 +7,8 @@ sys.setdefaultencoding( 'utf-8' )
 import os
 import shutil
 import time
+import multiprocessing
+from joblib import Parallel, delayed
 from subprocess import call
 
 import requests
@@ -263,8 +265,6 @@ class TranscodeSingleJob(object):
         transcode_file(source_path, dest_path, self.what_torrent['torrent']['media'], self.bitrate)
 
     def transcode_torrent(self):
-        if os.path.exists(self.torrent_temp_dir):
-            raise Exception('Target directory already exists. Do not run parallel jobs.')
         self.report_progress('Started transcoding to {0}'.format(self.bitrate.upper()))
 
         if not self.force_warnings:
@@ -378,22 +378,25 @@ class TranscodeJob(object):
             del mp3_ids['V0']
         if self.force_320 and '320' in mp3_ids:
             del mp3_ids['320']
-        for bitrate in TRANSCODER_FORMATS:
-            if bitrate not in mp3_ids:
-		dest_format = "MP3"
-		if bitrate == '16BITFLAC':
-		    if 'Lossless' in mp3_ids:
-                        print '16bit FLAC already exists, skipping'
-			continue
-		    else:
-		        dest_format = 'FLAC'
-                single_job = TranscodeSingleJob(self.what, self.what_torrent, self.report_progress,
-                                                self.source_dir,
-                                                bitrate, dest_format, transcoder_temp_dir=temp_dir)
-                single_job.force_warnings = self.force_warnings
-                single_job.run()
-                print 'Uploaded {0}'.format(bitrate.upper())
+        
+        num_cores = multiprocessing.cpu_count()
+        Parallel(n_jobs=num_cores)(transcode_loop(self, mp3_ids, bitrate) for bitrate in TRANSCODER_FORMATS)
 
+    def transcode_loop(self, mp3_ids, bitrate):
+	if bitrate not in mp3_ids:
+            dest_format = "MP3"
+            if bitrate == '16BITFLAC':
+                if 'Lossless' in mp3_ids:
+                    print '16bit FLAC already exists, skipping'
+                    return
+                else:
+                    dest_format = 'FLAC'
+            single_job = TranscodeSingleJob(self.what, self.what_torrent, self.report_progress,
+                                            self.source_dir,
+                                            bitrate, dest_format, transcoder_temp_dir=temp_dir)
+            single_job.force_warnings = self.force_warnings
+            single_job.run()
+            print 'Uploaded {0}'.format(bitrate.upper())
 
 @task(bind=True, track_started=True)
 def transcode(self, what_id):
