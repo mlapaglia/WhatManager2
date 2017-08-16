@@ -72,9 +72,8 @@ def transcode_file(source_file, dest_file, source_media, bitrate):
 
     if target_samplerate is None and source_bit_depth == 16:
 	if bitrate == '16BITFLAC':
-            raise Exception('release is already 16bit, not transcoding')
-	else:
-            chain_options = [flac_options, lame_options]
+            print 'track is already 16bit'
+        chain_options = [flac_options, lame_options]
     else:
         target_samplerate = target_samplerate or source_samplerate
         sox_options = ['sox', '-t', 'wav', '-', '-b', '16', '-t', 'wav', '-', 'rate', '-v', '-L',
@@ -107,3 +106,7 @@ def transcode_file(source_file, dest_file, source_media, bitrate):
             if tag in EasyID3.valid_keys.keys():
                 mp3file[tag] = flacfile[tag]
     	mp3file.save()
+    if(sox_options):
+        return ' '.join(sox_options)
+    else:
+        return ''

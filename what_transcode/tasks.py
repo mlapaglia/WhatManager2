@@ -7,8 +7,7 @@ sys.setdefaultencoding( 'utf-8' )
 import os
 import shutil
 import time
-from subprocess import call
-
+import subprocess
 import requests
 from celery import task
 from django import db
@@ -61,6 +60,7 @@ class TranscodeSingleJob(object):
         self.source_dir = source_dir
         self.bitrate = bitrate
         self.format = format
+	self.sox_options = ''
         if torrent_temp_dir is None:
             self.torrent_temp_dir = os.path.join(transcoder_temp_dir, self.directory_name)
         else:
@@ -78,7 +78,7 @@ class TranscodeSingleJob(object):
             '-o', self.torrent_file_path,
             self.torrent_temp_dir,
         ]
-        if call(['mktorrent'] + args) != 0:
+        if subprocess.call(['mktorrent'] + args) != 0:
             raise Exception('mktorrent returned non-zero')
         with open(self.torrent_file_path, 'rb') as f:
             torrent_data = f.read()
@@ -173,6 +173,7 @@ class TranscodeSingleJob(object):
 
     def upload_torrent(self):
         torrent = self.what_torrent
+        lame_version = subprocess.check_output(['lame -? | grep -oP \'([0-9]+\.[0-9]+\.[0-9]+)\''])
         print 'Sending request for upload to Redacted'
 
         payload_files = dict()
@@ -192,12 +193,12 @@ class TranscodeSingleJob(object):
             '16BITFLAC': 'Lossless',
         }[self.bitrate]
         payload['media'] = torrent['torrent']['media']
-        payload[
-            'release_desc'] = 'Made with LAME 3.99.3 with -h using karamanolev\'s auto transcoder' \
-                              ' from RED Torrent ID {0}.'.format(
-            torrent['torrent']['id']) + ' Resampling or bit depth change (if needed) ' \
-                                        'was done using SoX.'
+        payload['release_desc'] = 'Made with LAME '.format(lame_version) + ' with -h using karamanolev\'s auto transcoder' \
+                                  ' from https://redacted.ch/torrents.php?torrentid={0}.'.format(torrent['torrent']['id'])
 
+        if self.sox_options != '':
+            payload['release_desc'] += 'Sox commands used: ' + self.sox_options
+	
         if torrent['torrent']['remastered']:
             payload['remaster'] = 'on'
             payload['remaster_year'] = torrent['torrent']['remasterYear']
@@ -248,7 +249,7 @@ class TranscodeSingleJob(object):
         num_channels = get_channels_number(source_path)
         if num_channels == 1:
             if not self.force_warnings:
-                raise Exception('Single channel file.')
+                print 'Single channel file.'
         elif num_channels > 2:
             raise Exception('Not a 2-channel file.')
 
@@ -260,7 +261,7 @@ class TranscodeSingleJob(object):
         print 'Transcode'
         print ' ', source_path
         print ' ', dest_path
-        transcode_file(source_path, dest_path, self.what_torrent['torrent']['media'], self.bitrate)
+        self.sox_options = transcode_file(source_path, dest_path, self.what_torrent['torrent']['media'], self.bitrate)
 
     def transcode_torrent(self):
         if os.path.exists(self.torrent_temp_dir):
